@@ -121,7 +121,7 @@ publishing.
 ## Status
 
 Alpha. Not included: synchronization with a forge (GitLab/GitHub issues). It originated in the Embersail
-project's task tooling.
+project's task tooling. Plans for the next editions are in [TODO.md](TODO.md).
 
 ## License
 
