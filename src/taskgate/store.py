@@ -10,6 +10,7 @@ Files under ``<root>/<data_dir>/`` (default ``.taskgate/``):
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -113,13 +114,14 @@ def save(project: Project, data: dict[str, Any]) -> None:
     text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        Path(tmp_name).write_text(text, encoding="utf-8")
+        # write through the descriptor and close it before the replace: Windows refuses to replace an open file
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
         os.replace(tmp_name, path)
     except BaseException:
-        os.unlink(tmp_name)
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
         raise
-    finally:
-        os.close(fd)
     # keep the view in step with every registry change, so 'render --check' never goes red by itself
     project.view_file.write_text(render.render(data, project.config), encoding="utf-8")
 
