@@ -1,0 +1,13 @@
+# Every key is optional. Place this file in the project root as taskgate.toml.
+title = "Project tasks"
+data_dir = ".taskgate"                   # tasks.json, tasks.log.jsonl, tasks.md live here
+id_pattern = '^[A-Za-z][A-Za-z0-9]*-\d+$' # a named group (?P<phase>\d+) ties the id to the task's phase
+planners = ["human"]                     # identities allowed to add, move and re-link tasks
+reviewer = "reviewer"                    # identity whose review_result closes a task
+require_review = true                    # false: done needs only a green verification_result
+review_delay_seconds = 60                # review must come this long after the verification
+# owners = ["dev-agent", "human"]        # omit to accept any owner
+
+[quality]                                # gates run by the MCP tool quality_check
+# test = [["pytest", "-q"]]
+# lint = [["ruff", "check", "."]]

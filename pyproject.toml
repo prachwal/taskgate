@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taskgate"
+version = "0.1.0"
+description = "Gated task registry with an MCP server: strict status flow, verification and review evidence, for Claude Code, Codex, VS Code Copilot and other MCP clients."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "prachwal" }]
+keywords = ["mcp", "model-context-protocol", "task-tracker", "agents", "workflow", "claude-code", "codex", "copilot"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[project.urls]
+Homepage = "https://github.com/prachwal/taskgate"
+Repository = "https://github.com/prachwal/taskgate"
+Issues = "https://github.com/prachwal/taskgate/issues"
+
+[project.scripts]
+taskgate = "taskgate.cli:run"
+taskgate-mcp = "taskgate.mcp.server:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]

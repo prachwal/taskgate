@@ -1,0 +1,17 @@
+# taskgate profile reproducing the Embersail task flow: ids P<phase>-NN, phases 0-5,
+# planners/reviewer/owners as in its docs/workflow/task-tracking.md, data under docs/tasks/.
+title = "Embersail tasks"
+data_dir = "docs/tasks"
+id_pattern = '^P(?P<phase>[0-5])-\d{2}$'
+planners = ["architect", "human"]
+reviewer = "reviewer"
+owners = ["architect", "primary-agent", "test-writer", "reviewer", "human"]
+review_delay_seconds = 60
+
+[phase_names]
+0 = "Phase 0 (foundations)"
+
+[quality]
+build = [["dotnet", "build", "Embersail.slnx"]]
+test = [["dotnet", "test", "Embersail.slnx"]]
+format = [["dotnet", "format", "Embersail.slnx", "--verify-no-changes"]]
