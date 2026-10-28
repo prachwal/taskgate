@@ -112,8 +112,11 @@ Pushing to `main` runs the tests on Linux, macOS and Windows and builds the pack
 creates the tag and GitHub release. To release: bump `version` in `pyproject.toml` and
 `src/taskgate/__init__.py` (a test keeps them equal), add a changelog entry, merge to `main`.
 
-One-time setup: on PyPI add a (pending) trusted publisher for this repository, workflow `ci.yml`,
-environment `pypi`; on GitHub create an environment named `pypi`.
+One-time setup, either way: a GitHub environment named `pypi`. Then either store a PyPI API token as the
+repository secret `PYPI_API_TOKEN` (the first release of a new project needs an account-wide token; narrow it
+to the project afterwards), or add a (pending) trusted publisher on PyPI for this repository, workflow
+`ci.yml`, environment `pypi`. With the secret set it is used; without it the workflow falls back to trusted
+publishing.
 
 ## Status
 

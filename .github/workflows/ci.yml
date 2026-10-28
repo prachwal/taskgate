@@ -77,10 +77,12 @@ jobs:
         with:
           name: dist
           path: dist/
-      - name: Publish to PyPI (trusted publishing)
+      - name: Publish to PyPI (API token secret, else trusted publishing)
         if: steps.version.outputs.new == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          # empty when the secret is not set: the action then falls back to trusted publishing (OIDC)
+          password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
       - name: Tag and create the GitHub release
         if: steps.version.outputs.new == 'true'
