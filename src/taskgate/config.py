@@ -14,6 +14,31 @@ DEFAULT_DATA_DIR = ".taskgate"
 DEFAULT_ID_PATTERN = r"^[A-Za-z][A-Za-z0-9]*-\d+$"
 
 
+DEFAULT_PROFILE = "default"
+BUILTIN_GATES = ("tasks",)
+
+
+@dataclass(frozen=True)
+class Policy:
+    """How one task is closed: whether it needs a review, from whom, and which quality gates apply."""
+
+    profile: str
+    require_review: bool
+    reviewer: str
+    review_delay_seconds: int
+    gates: tuple[str, ...] | None
+
+
+@dataclass(frozen=True)
+class Profile:
+    """A named override of the project-wide review policy; ``None`` means "inherit the project value"."""
+
+    require_review: bool | None = None
+    reviewer: str | None = None
+    review_delay_seconds: int | None = None
+    gates: tuple[str, ...] | None = None
+
+
 @dataclass(frozen=True)
 class Config:
     """Policy and layout of one project.
@@ -34,6 +59,22 @@ class Config:
     require_review: bool = True
     review_delay_seconds: int = 60
     quality: dict[str, list[list[str]]] = field(default_factory=dict)
+    profiles: dict[str, Profile] = field(default_factory=dict)
+
+    def policy(self, profile: str | None) -> Policy:
+        """Resolve a profile name (``None`` or ``default`` = the project-wide settings) into a ``Policy``."""
+        chosen = self.profiles.get(profile) if profile and profile != DEFAULT_PROFILE else None
+        return Policy(
+            profile=profile or DEFAULT_PROFILE,
+            require_review=self.require_review if chosen is None or chosen.require_review is None else chosen.require_review,
+            reviewer=self.reviewer if chosen is None or chosen.reviewer is None else chosen.reviewer,
+            review_delay_seconds=(
+                self.review_delay_seconds
+                if chosen is None or chosen.review_delay_seconds is None
+                else chosen.review_delay_seconds
+            ),
+            gates=None if chosen is None else chosen.gates,
+        )
 
     @property
     def id_regex(self) -> re.Pattern[str]:
@@ -51,7 +92,7 @@ def parse(raw: dict[str, Any]) -> Config:
     """Build a ``Config`` from parsed TOML, rejecting unknown keys and bad values."""
     known = {
         "data_dir", "title", "id_pattern", "phase_names", "planners", "reviewer",
-        "owners", "require_review", "review_delay_seconds", "quality",
+        "owners", "require_review", "review_delay_seconds", "quality", "profiles",
     }
     unknown = sorted(set(raw) - known)
     if unknown:
@@ -94,12 +135,55 @@ def parse(raw: dict[str, Any]) -> Config:
                 f"error: {CONFIG_FILE}: quality.<name> must be a non-empty list of argv arrays"
             )
         values["quality"] = {name: [list(c) for c in cmds] for name, cmds in gates.items()}
+    if "profiles" in raw:
+        values["profiles"] = _profiles(raw["profiles"], set(values.get("quality", {})) | set(BUILTIN_GATES))
     config = Config(**{**base.__dict__, **values})
     try:
         re.compile(config.id_pattern)
     except re.error as exc:
         raise SystemExit(f"error: {CONFIG_FILE}: id_pattern is not a valid regex: {exc}") from exc
     return config
+
+
+def _profiles(raw: Any, gates: set[str]) -> dict[str, Profile]:
+    """Parse ``[profiles.<name>]`` tables; every key is optional and falls back to the project setting."""
+    if not isinstance(raw, dict):
+        raise SystemExit(f"error: {CONFIG_FILE}: profiles must be a table of tables")
+    profiles: dict[str, Profile] = {}
+    for name, table in raw.items():
+        where = f"profiles.{name}"
+        if name == DEFAULT_PROFILE:
+            raise SystemExit(f"error: {CONFIG_FILE}: {DEFAULT_PROFILE!r} is reserved for the project-wide settings")
+        if not isinstance(table, dict):
+            raise SystemExit(f"error: {CONFIG_FILE}: {where} must be a table")
+        unknown = sorted(set(table) - {"require_review", "reviewer", "review_delay_seconds", "gates"})
+        if unknown:
+            raise SystemExit(f"error: {CONFIG_FILE}: {where}: unknown keys {', '.join(unknown)}")
+        values: dict[str, Any] = {}
+        if "require_review" in table:
+            if not isinstance(table["require_review"], bool):
+                raise SystemExit(f"error: {CONFIG_FILE}: {where}.require_review must be true or false")
+            values["require_review"] = table["require_review"]
+        if "reviewer" in table:
+            if not isinstance(table["reviewer"], str) or not table["reviewer"]:
+                raise SystemExit(f"error: {CONFIG_FILE}: {where}.reviewer must be a non-empty string")
+            values["reviewer"] = table["reviewer"]
+        if "review_delay_seconds" in table:
+            delay = table["review_delay_seconds"]
+            if not isinstance(delay, int) or isinstance(delay, bool) or delay < 0:
+                raise SystemExit(f"error: {CONFIG_FILE}: {where}.review_delay_seconds must be an integer >= 0")
+            values["review_delay_seconds"] = delay
+        if "gates" in table:
+            chosen = _strings(table["gates"], f"{where}.gates")
+            missing = [g for g in chosen if g not in gates]
+            if missing:
+                raise SystemExit(
+                    f"error: {CONFIG_FILE}: {where}.gates names unknown gates: {', '.join(missing)} "
+                    f"(available: {', '.join(sorted(gates))})"
+                )
+            values["gates"] = chosen
+        profiles[name] = Profile(**values)
+    return profiles
 
 
 def load(root: Path) -> Config:

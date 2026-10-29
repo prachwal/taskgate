@@ -49,9 +49,48 @@ any non-terminal status -> cancelled
 | review | `done` needs a green `review_result` from the reviewer identity, different from the verifier, listing `checks`, recorded after a delay, in the same call as the closing update |
 | fresh evidence | a new verification voids an earlier review; results are never accepted together in one call |
 | planning | adding, moving and re-linking tasks is limited to the `planners` identities; started work is never reordered |
+| subtasks | a task with `parent` is one step of a larger task; it starts only while the parent is `in_progress`, and the parent cannot go to `in_review`, `done` or `cancelled` while a subtask is open |
+| profile | the task's `profile` decides how it is closed: whether a review is needed, who reviews, the review delay and which quality gates apply |
 
 Identities (`--by`, or the `TASKGATE_BY` environment variable, default `human`) are *declared by the caller*.
 This is a process barrier that keeps roles apart and leaves a trail in the log; it is not authentication.
+
+## Subtasks and profiles: matching the checks to the change
+
+A full verification and an independent review are worth their cost for a risky change and wasteful for a typo in the
+docs. taskgate lets the plan say, per task, how much checking it gets.
+
+**Subtasks.** `taskgate add --parent T-12 --title ... --verification-cmd ...` adds `T-12.1`, `T-12.2`, ... (one level;
+phase comes from the parent). The parent is claimed first and stays `in_progress`; `next` then returns its first open
+subtask. Each subtask has its own cheap `verification_cmd`, and the parent is verified and reviewed once, at the end,
+over the whole change. A small step therefore costs one fast check, not a full gate plus a review.
+
+**Profiles.** Define named closing policies in `taskgate.toml`:
+
+```toml
+[quality]
+build = [["dotnet", "build", "-c", "Release"]]
+test  = [["dotnet", "test", "-c", "Release", "--no-build"]]
+
+[profiles.docs]            # documentation-only change
+require_review = false     # done needs only a green verification
+gates = ["tasks"]          # quality_check(task=...) runs just these
+
+[profiles.code]            # behaviour change: the strong reviewer, all gates
+reviewer = "reviewer"
+gates = ["build", "test", "tasks"]
+
+[profiles.chore]           # small mechanical change: a cheaper reviewer
+reviewer = "reviewer-lite"
+review_delay_seconds = 0
+gates = ["build", "tasks"]
+```
+
+Assign one with `taskgate add --profile docs ...` or, for a planned task, `taskgate profile T-3 docs --by planner`.
+A subtask inherits its parent's profile unless it has its own. Tasks without a profile use the project-wide settings
+(`reviewer`, `require_review`, `review_delay_seconds`, every gate). The profile cannot change once work has started, so
+the bar a task is judged by cannot be lowered after the fact. `taskgate show T-3` prints the task with its effective
+policy and subtasks; `quality_check` with `task=T-3` runs only that profile's gates.
 
 ## Configuration
 
@@ -70,6 +109,7 @@ Optional `taskgate.toml` in the project root; every key has a default
 | `require_review` | `true` | `false`: `done` needs only a green verification |
 | `review_delay_seconds` | `60` | minimum time between verification and review |
 | `[quality]` | none | named gates for the `quality_check` tool, each a list of argv arrays |
+| `[profiles.<name>]` | none | per-task closing policy: `require_review`, `reviewer`, `review_delay_seconds`, `gates`; omitted keys inherit the project values |
 
 The project root is `TASKGATE_ROOT` if set, otherwise the nearest ancestor of the working directory that has
 `taskgate.toml` or `.taskgate/`.
@@ -78,8 +118,8 @@ architect/human planners) to show the engine is not tied to one convention.
 
 ## Commands
 
-`init`, `validate`, `render [--check]`, `next`, `list [--status]`, `claim`, `update`, `add`, `sort`, `move`,
-`depends`, `mcp`, `config-snippet`. `taskgate <command> --help` lists the flags.
+`init`, `validate`, `render [--check]`, `next`, `list [--status]`, `show`, `claim`, `update`, `add [--parent] [--profile]`,
+`profile`, `sort`, `move`, `depends`, `mcp`, `config-snippet`. `taskgate <command> --help` lists the flags.
 
 Recording evidence, in separate calls:
 
@@ -92,8 +132,9 @@ taskgate update T-1 --status done --by reviewer \
 
 ## MCP tools
 
-`task_list`, `task_next`, `task_validate` (read-only, so clients can skip the approval prompt), `task_claim`,
-`task_update`, `task_add`, `task_move`, `task_depends`, `task_sort`, `task_render` and `quality_check`.
+`task_list`, `task_next`, `task_show`, `task_validate` (read-only, so clients can skip the approval prompt),
+`task_claim`, `task_update`, `task_add`, `task_profile`, `task_move`, `task_depends`, `task_sort`, `task_render` and
+`quality_check`.
 Tool failures come back as `isError` results rather than protocol errors, so an agent sees the reason.
 
 The server speaks newline-delimited JSON-RPC 2.0 over stdio. Run it with `taskgate mcp` or `taskgate-mcp`.

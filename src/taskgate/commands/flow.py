@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from .. import model, ordering, store
-from ..config import Config
+from ..config import DEFAULT_PROFILE, Config, Policy
 from .common import VERIFICATION_STATUSES, find, identity
 
 
@@ -33,7 +33,45 @@ def cmd_next(args: argparse.Namespace) -> int:
         print(f"nothing to claim: {head['id']} is owned by {head['owner']!r}")
         return 2
     owner = head.get("owner") or "unowned"
-    print(f"{head['id']}  [{owner}]  {head['title']}  // verify: {head.get('verification_cmd')}")
+    hint = _policy_hint(head, data, project.config)
+    print(f"{head['id']}  [{owner}]  {head['title']}  // verify: {head.get('verification_cmd')}{hint}")
+    return 0
+
+
+def _policy_hint(task: dict[str, Any], data: dict[str, Any], config: Config) -> str:
+    """`` // closes with: ...`` for tasks that are not plain top-level default ones, else nothing."""
+    policy = model.policy_of(task, data.get("tasks", []), config)
+    if policy.profile == "default" and not model.parent_of(task):
+        return ""
+    review = f"review by {policy.reviewer}" if policy.require_review else "no review"
+    gates = ",".join(policy.gates) if policy.gates is not None else "all gates"
+    return f"  // closes with: profile {policy.profile}, {review}, gates {gates}"
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    project = store.open_project()
+    data = store.load(project)
+    task, found = find(data, args.id)
+    if not found:
+        print(f"error: unknown task {args.id}", file=sys.stderr)
+        return 1
+    tasks = data.get("tasks", [])
+    policy = model.policy_of(task, tasks, project.config)
+    view = {
+        **task,
+        "policy": {
+            "profile": policy.profile,
+            "require_review": policy.require_review,
+            "reviewer": policy.reviewer if policy.require_review else None,
+            "review_delay_seconds": policy.review_delay_seconds if policy.require_review else None,
+            "gates": list(policy.gates) if policy.gates is not None else None,
+        },
+        "subtasks": [
+            {"id": c["id"], "status": c.get("status"), "title": c.get("title")}
+            for c in model.subtasks_of(tasks, args.id)
+        ],
+    }
+    print(json.dumps(view, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -46,7 +84,8 @@ def cmd_list(args: argparse.Namespace) -> int:
         info = f"  // blocked: {t.get('blocked_reason')}" if t.get("status") == "blocked" else ""
         if t.get("depends_on"):
             info += f"  <- {','.join(t['depends_on'])}"
-        print(f"{t['id']}  {t.get('status'):12}  {t.get('owner') or '-':12}  {t.get('title')}{info}")
+        label = f"  {t['id']}" if t.get("parent") else t["id"]
+        print(f"{label}  {t.get('status'):12}  {t.get('owner') or '-':12}  {t.get('title')}{info}")
     print(f"-- {len(rows)} task(s)")
     return 0
 
@@ -104,9 +143,9 @@ def _parse_instant(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo is not None else None
 
 
-def _review_problem(task: dict[str, Any], review: dict[str, Any], by: str, config: Config) -> str | None:
+def _review_problem(task: dict[str, Any], review: dict[str, Any], by: str, policy: Policy) -> str | None:
     """Check the review write preconditions, in the order the contract fixes them."""
-    reviewer = config.reviewer
+    reviewer = policy.reviewer
     if by != reviewer or review.get("by") != reviewer:
         return f"review_result.by and caller identity must both be {reviewer!r}"
     verification = task.get("verification_result")
@@ -128,8 +167,8 @@ def _review_problem(task: dict[str, Any], review: dict[str, Any], by: str, confi
         )
     current = _parse_instant(store.now())
     elapsed = None if current is None else (current - verified_at).total_seconds()
-    if elapsed is None or elapsed < config.review_delay_seconds:
-        return f"review_result requires at least {config.review_delay_seconds} seconds after verification_result.at"
+    if elapsed is None or elapsed < policy.review_delay_seconds:
+        return f"review_result requires at least {policy.review_delay_seconds} seconds after verification_result.at"
     return None
 
 
@@ -149,6 +188,7 @@ def cmd_update(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        policy = model.policy_of(task, data.get("tasks", []), config)
         current = task.get("status") or "draft"
         if current in model.TERMINAL and (
             args.verification_result is not None or args.review_result is not None or args.status is not None
@@ -173,7 +213,7 @@ def cmd_update(args: argparse.Namespace) -> int:
             review = _parse_result(args.review_result, "--review-result")
             if review is None:
                 return 1
-            problem = _review_problem(task, review, by, config)
+            problem = _review_problem(task, review, by, policy)
             if problem is not None:
                 print(f"error: {problem}", file=sys.stderr)
                 return 1
@@ -181,7 +221,17 @@ def cmd_update(args: argparse.Namespace) -> int:
         if review is not None and current != "in_review":
             print("error: review_result can only be recorded while the task is 'in_review'", file=sys.stderr)
             return 1
-        if args.status == "done" and review is None and config.require_review:
+        if args.status in ("in_review", "done", "cancelled"):
+            open_children = [
+                c["id"] for c in model.subtasks_of(data.get("tasks", []), args.id) if c.get("status") not in model.TERMINAL
+            ]
+            if open_children:
+                print(
+                    f"error: {args.id} cannot become {args.status!r} while subtasks are open: {', '.join(open_children)}",
+                    file=sys.stderr,
+                )
+                return 1
+        if args.status == "done" and review is None and policy.require_review:
             print("error: --status done requires a fresh --review-result in the same update", file=sys.stderr)
             return 1
         detail: dict[str, Any] = {}
@@ -237,12 +287,12 @@ def cmd_update(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        if args.status == "done" and config.require_review and not model.is_review(
-            task.get("review_result"), config.reviewer
+        if args.status == "done" and policy.require_review and not model.is_review(
+            task.get("review_result"), policy.reviewer
         ):
             print(
                 "error: --status done requires a green review_result with the reviewer identity "
-                f"(pass --review-result '{{\"ok\": true, \"by\": \"{config.reviewer}\", \"checks\": [...]}}')",
+                f"(pass --review-result '{{\"ok\": true, \"by\": \"{policy.reviewer}\", \"checks\": [...]}}')",
                 file=sys.stderr,
             )
             return 1
@@ -262,28 +312,56 @@ def cmd_add(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    match = config.id_regex.fullmatch(args.id)
-    phase = args.phase
-    if phase is None:
-        phase = int(match.group("phase")) if match and "phase" in match.groupdict() and match.group("phase") else 0
-    task: dict[str, Any] = {
-        "id": args.id,
-        "title": args.title,
-        "phase": phase,
-        "status": args.status,
-        "verification_cmd": args.verification_cmd,
-    }
-    if args.spec:
-        task["spec_source"] = args.spec
-    if args.owner:
-        task["owner"] = args.owner
-    if args.depends:
-        task["depends_on"] = [d for d in args.depends.split(",") if d]
+    if not args.id and not args.parent:
+        print("error: pass --id, or --parent to add a subtask with the next free id", file=sys.stderr)
+        return 1
+    if args.profile and args.profile != DEFAULT_PROFILE and args.profile not in config.profiles:
+        known = ", ".join(sorted(config.profiles)) or "none"
+        print(f"error: unknown profile {args.profile!r} (known: {known})", file=sys.stderr)
+        return 1
     with store.locked(project):
         data = store.load(project)
-        if find(data, args.id)[1]:
-            print(f"error: task {args.id} already exists", file=sys.stderr)
+        parent: dict[str, Any] | None = None
+        if args.parent:
+            parent, found = find(data, args.parent)
+            if not found:
+                print(f"error: unknown parent task {args.parent}", file=sys.stderr)
+                return 1
+            if parent.get("status") not in ("draft", "planned", "in_progress"):
+                print(
+                    f"error: parent {args.parent} is {parent.get('status')!r}; subtasks can be added only while it is "
+                    "draft, planned or in_progress",
+                    file=sys.stderr,
+                )
+                return 1
+        task_id = args.id or ordering.next_subtask_id(data["tasks"], args.parent)
+        if find(data, task_id)[1]:
+            print(f"error: task {task_id} already exists", file=sys.stderr)
             return 1
+        if parent is not None:
+            phase = model.phase_of(parent)
+        elif args.phase is not None:
+            phase = args.phase
+        else:
+            match = config.id_regex.fullmatch(task_id)
+            phase = int(match.group("phase")) if match and "phase" in match.groupdict() and match.group("phase") else 0
+        task: dict[str, Any] = {
+            "id": task_id,
+            "title": args.title,
+            "phase": phase,
+            "status": args.status,
+            "verification_cmd": args.verification_cmd,
+        }
+        if args.parent:
+            task["parent"] = args.parent
+        if args.profile:
+            task["profile"] = args.profile
+        if args.spec:
+            task["spec_source"] = args.spec
+        if args.owner:
+            task["owner"] = args.owner
+        if args.depends:
+            task["depends_on"] = [d for d in args.depends.split(",") if d]
         phase_now = ordering.current_phase(data["tasks"])
         if phase < phase_now:
             print(
@@ -292,8 +370,12 @@ def cmd_add(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        # appended after the last task of its phase; 'move' places it elsewhere
-        position = ordering.insert_position(data["tasks"], phase)
+        # appended after the last task of its phase (or its parent's last subtask); 'move' places it elsewhere
+        position = (
+            ordering.subtask_position(data["tasks"], args.parent)
+            if args.parent
+            else ordering.insert_position(data["tasks"], phase)
+        )
         data["tasks"] = [*data["tasks"][:position], task, *data["tasks"][position:]]
         errors = model.validate(data, config)
         if errors:
@@ -302,6 +384,9 @@ def cmd_add(args: argparse.Namespace) -> int:
             return 1
         task["created"] = store.now()
         store.save(project, data)
-        store.append_log(project, "add", args.id, by, {"status": task["status"]})
-    print(f"{args.id} added ({task['status']})")
+        detail: dict[str, Any] = {"status": task["status"]}
+        if args.parent:
+            detail["parent"] = args.parent
+        store.append_log(project, "add", task_id, by, detail)
+    print(f"{task_id} added ({task['status']})")
     return 0

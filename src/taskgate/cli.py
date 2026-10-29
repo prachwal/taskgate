@@ -6,8 +6,8 @@ import argparse
 import sys
 
 from . import __version__, clients, model
-from .commands.flow import cmd_add, cmd_claim, cmd_list, cmd_next, cmd_update
-from .commands.plan import cmd_depends, cmd_move
+from .commands.flow import cmd_add, cmd_claim, cmd_list, cmd_next, cmd_show, cmd_update
+from .commands.plan import cmd_depends, cmd_move, cmd_profile
 from .commands.registry import cmd_init, cmd_render, cmd_sort, cmd_validate
 
 BY_HELP = "identity (default TASKGATE_BY env / 'human')"
@@ -79,7 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("add", help="append a new task to the registry")
-    p.add_argument("--id", required=True, help="id matching the configured id_pattern")
+    p.add_argument("--id", help="id matching the configured id_pattern (optional with --parent: next <parent>.<n>)")
+    p.add_argument("--parent", help="make this a subtask of the given task (one level; phase is the parent's)")
+    p.add_argument("--profile", help="review/verification profile from taskgate.toml (subtasks inherit the parent's)")
     p.add_argument("--title", required=True)
     p.add_argument("--phase", type=int, help="phase (default: from the id's 'phase' group, else 0)")
     p.add_argument("--verification-cmd", required=True, dest="verification_cmd")
@@ -89,6 +91,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--depends", help="comma-separated task ids")
     p.add_argument("--by", help=BY_HELP)
     p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("show", help="print one task with its effective closing policy and subtasks (JSON)")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("profile", help="set or clear the profile of a draft/planned task")
+    p.add_argument("id")
+    p.add_argument("name", nargs="?", help="profile name from taskgate.toml")
+    p.add_argument("--clear", action="store_true", help="remove the task's own profile")
+    p.add_argument("--by", help=BY_HELP)
+    p.set_defaults(func=cmd_profile)
 
     p = sub.add_parser("sort", help="reset the execution order to phase, then id")
     p.add_argument("--by", help=BY_HELP)

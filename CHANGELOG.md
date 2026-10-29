@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-29
+
+### Added
+- Subtasks: `add --parent` creates `<parent>.<n>` (one level, phase from the parent). Subtasks start only while the
+  parent is `in_progress`; `next` hands out the first open subtask; a parent cannot enter `in_review`, `done` or
+  `cancelled` while a subtask is open. The Markdown view nests subtasks and shows their progress.
+- Profiles: `[profiles.<name>]` in `taskgate.toml` overrides `require_review`, `reviewer`, `review_delay_seconds` and
+  the quality `gates` per task, so a documentation change can skip the review or use a cheaper reviewer. A task takes
+  its own profile, else its parent's, else the project-wide settings.
+- `show` / `task_show`: a task with its effective closing policy and subtasks. `profile` / `task_profile`: set or
+  clear the profile of a draft/planned task (planners only). `quality_check` accepts `task` to run just that task's
+  gates. `next` states how the task closes when it is a subtask or has a profile.
+
+### Changed
+- The review requirement, reviewer identity and delay are resolved per task. Registries and configurations without
+  `parent`, `profile` or `[profiles]` behave exactly as in 0.1.0.
+
 ## [0.1.0] - 2026-10-28
 
 ### Added

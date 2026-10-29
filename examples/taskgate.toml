@@ -11,3 +11,13 @@ review_delay_seconds = 60                # review must come this long after the 
 [quality]                                # gates run by the MCP tool quality_check
 # test = [["pytest", "-q"]]
 # lint = [["ruff", "check", "."]]
+
+# Closing policies per task kind: pick one with `taskgate add --profile docs` or `taskgate profile T-3 docs`.
+# Omitted keys inherit the values above; gates name entries of [quality] (or the built-in "tasks").
+# [profiles.docs]
+# require_review = false
+# gates = ["tasks"]
+#
+# [profiles.chore]
+# reviewer = "reviewer-lite"     # a cheaper model/agent identity for small changes
+# review_delay_seconds = 0
