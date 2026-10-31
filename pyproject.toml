@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taskgate"
-version = "0.2.0"
+version = "0.3.0"
 description = "Gated task registry with an MCP server: strict status flow, verification and review evidence, for Claude Code, Codex, VS Code Copilot and other MCP clients."
 readme = "README.md"
 license = "MIT"

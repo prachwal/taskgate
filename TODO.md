@@ -3,16 +3,8 @@
 Ideas for the next editions, roughly by value. These are candidates, not commitments. Items marked **known gap**
 describe something the current version does not do or has not verified.
 
-## Next (0.2)
+## Next (0.4)
 
-- [ ] **Show and annotate tasks.** `taskgate show <id>` (full record with evidence) and `taskgate note <id> "text"`
-      appending to `notes`; matching MCP tools `task_show` and `task_note`. Today the only way to read a task's
-      evidence is to open `tasks.json`, and there is no way to edit a title or spec after `add`.
-- [ ] **Machine-readable output.** `--json` for `list`, `next`, `show` and `validate`, so scripts and agents do not
-      parse text. Structured tool results over MCP instead of text blocks.
-- [ ] **History view.** `taskgate log [--task ID] [--by WHO]` over `tasks.log.jsonl`.
-- [ ] **`taskgate doctor`.** Check `taskgate.toml`, the registry, the view drift and which project root was found; one
-      command to run first when an MCP client says "no taskgate project found".
 - [ ] **Forge sync, generalized.** Publish tasks as GitLab/GitHub issues (labels per status, milestones per phase).
       The Embersail version exists (`tools/tasks/gitlab_sync.py`) but hardcodes phases 0-5 and Polish text; it needs
       configurable labels and milestones and should live as an optional integration, not in the core.
@@ -29,7 +21,6 @@ describe something the current version does not do or has not verified.
 - [ ] **Recorded evidence, not just a flag.** Let `verification_result` carry the command output (truncated) and the
       exit code, and optionally run `verification_cmd` itself (`taskgate verify <id>`), so "green" is produced by the
       tool rather than reported by the caller.
-- [ ] **Review of the review.** Rejecting a review (`in_review -> in_progress`) should record the reason in `notes`.
 - [ ] **Reopen.** A controlled way to reopen a `done` task (new task linked to the old one, or a `reopened` event)
       instead of the current "terminal tasks are closed".
 

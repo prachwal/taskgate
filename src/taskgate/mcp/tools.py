@@ -15,22 +15,24 @@ _STATUSES = list(model.STATUSES)
 
 @tool(
     "task_list",
-    "List tasks (optional status filter).",
-    {"properties": {"status": {"type": "string", "enum": _STATUSES}}},
+    "List tasks (optional status filter); json=true returns the task records as a JSON array.",
+    {"properties": {"status": {"type": "string", "enum": _STATUSES}, "json": {"type": "boolean"}}},
     read_only=True,
 )
 def task_list(args: dict[str, Any]) -> str:
-    return bridge.run_cli(["list", *(["--status", arg(args, "status")] if arg(args, "status") else [])])
+    argv = ["list", *(["--status", arg(args, "status")] if arg(args, "status") else [])]
+    return bridge.run_cli([*argv, *(["--json"] if arg(args, "json") else [])])
 
 
 @tool(
     "task_next",
     "Show the one task that may start now: the queue head, planned, with dependencies and the phase gate met.",
-    {"properties": {"owner": {"type": "string"}}},
+    {"properties": {"owner": {"type": "string"}, "json": {"type": "boolean"}}},
     read_only=True,
 )
 def task_next(args: dict[str, Any]) -> str:
-    return bridge.run_cli(["next", *(["--owner", arg(args, "owner")] if arg(args, "owner") else [])])
+    argv = ["next", *(["--owner", arg(args, "owner")] if arg(args, "owner") else [])]
+    return bridge.run_cli([*argv, *(["--json"] if arg(args, "json") else [])])
 
 
 @tool(
@@ -155,6 +157,54 @@ def task_add(args: dict[str, Any]) -> str:
     if arg(args, "depends"):
         argv += ["--depends", ",".join(arg(args, "depends"))]
     return bridge.run_cli(argv)
+
+
+@tool(
+    "task_edit",
+    "Change the title, spec_source (path + section; empty string clears it) or verification_cmd of a draft/planned "
+    "task. Planners only; pass at least one of title, spec, verification_cmd. Started tasks take task_note instead.",
+    {"properties": {"id": {"type": "string"}, "title": {"type": "string"}, "spec": {"type": "string"},
+                    "verification_cmd": {"type": "string"}, "by": {"type": "string"}}, "required": ["id", "by"]},
+)
+def task_edit(args: dict[str, Any]) -> str:
+    argv = ["edit", arg(args, "id"), "--by", arg(args, "by")]
+    for key, flag in (("title", "--title"), ("spec", "--spec"), ("verification_cmd", "--verification-cmd")):
+        if arg(args, key) is not None:
+            argv += [flag, arg(args, key)]
+    return bridge.run_cli(argv)
+
+
+@tool(
+    "task_note",
+    "Append a timestamped note to a task in any status (decisions, follow-ups, reasons). Does not change status.",
+    {"properties": {"id": {"type": "string"}, "text": {"type": "string"}, "by": {"type": "string"}},
+     "required": ["id", "text"]},
+)
+def task_note(args: dict[str, Any]) -> str:
+    return bridge.run_cli(["note", arg(args, "id"), arg(args, "text"), *(["--by", arg(args, "by")] if arg(args, "by") else [])])
+
+
+@tool(
+    "task_log",
+    "The append-only mutation log as a JSON array, optionally for one task (subtasks included), one identity, "
+    "or the last N events.",
+    {"properties": {"task": {"type": "string"}, "by": {"type": "string"}, "limit": {"type": "integer", "minimum": 1}}},
+    read_only=True,
+)
+def task_log(args: dict[str, Any]) -> str:
+    argv = ["log", "--json"]
+    for key, flag in (("task", "--task"), ("by", "--by")):
+        if arg(args, key):
+            argv += [flag, arg(args, key)]
+    if arg(args, "limit"):
+        argv += ["--limit", str(arg(args, "limit"))]
+    return bridge.run_cli(argv)
+
+
+@tool("task_doctor", "Diagnose the project: root, configuration, registry validity, view drift and log.",
+      {"properties": {}}, read_only=True)
+def task_doctor(args: dict[str, Any]) -> str:
+    return bridge.run_cli(["doctor"])
 
 
 @tool(

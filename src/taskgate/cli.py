@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from . import __version__, clients, model
+from .commands.edit import cmd_doctor, cmd_edit, cmd_log, cmd_note
 from .commands.flow import cmd_add, cmd_claim, cmd_list, cmd_next, cmd_show, cmd_update
 from .commands.plan import cmd_depends, cmd_move, cmd_profile
 from .commands.registry import cmd_init, cmd_render, cmd_sort, cmd_validate
@@ -54,10 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("next", help="show the one task that may start now (queue head)")
     p.add_argument("--owner", help="only tasks unowned or owned by this identity")
+    p.add_argument("--json", action="store_true", help="print the task as JSON (exit code unchanged)")
     p.set_defaults(func=cmd_next)
 
     p = sub.add_parser("list", help="list all tasks")
     p.add_argument("--status", choices=model.STATUSES, help="filter by status")
+    p.add_argument("--json", action="store_true", help="print the tasks as a JSON array")
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser("claim", help="claim a planned task (-> in_progress)")
@@ -95,6 +98,30 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("show", help="print one task with its effective closing policy and subtasks (JSON)")
     p.add_argument("id")
     p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("edit", help="change title, spec anchor or verification command of a draft/planned task")
+    p.add_argument("id")
+    p.add_argument("--title")
+    p.add_argument("--spec", help="spec_source (empty string clears it)")
+    p.add_argument("--verification-cmd", dest="verification_cmd")
+    p.add_argument("--by", help=BY_HELP)
+    p.set_defaults(func=cmd_edit)
+
+    p = sub.add_parser("note", help="append a timestamped note to a task (any status)")
+    p.add_argument("id")
+    p.add_argument("text")
+    p.add_argument("--by", help=BY_HELP)
+    p.set_defaults(func=cmd_note)
+
+    p = sub.add_parser("log", help="show the mutation log (tasks.log.jsonl)")
+    p.add_argument("--task", help="only events of this task (and its subtasks)")
+    p.add_argument("--by", help="only events by this identity")
+    p.add_argument("--limit", type=int, default=0, help="only the last N events")
+    p.add_argument("--json", action="store_true", help="print the events as a JSON array")
+    p.set_defaults(func=cmd_log)
+
+    p = sub.add_parser("doctor", help="check configuration, registry, view and log; run first when something is off")
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("profile", help="set or clear the profile of a draft/planned task")
     p.add_argument("id")

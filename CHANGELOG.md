@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-31
+
+### Added
+- `edit` / `task_edit`: change the title, `spec_source` or `verification_cmd` of a draft/planned task (planners only).
+- `note` / `task_note`: append a timestamped note to a task in any status.
+- `log` / `task_log`: read `tasks.log.jsonl`, filtered by task (subtasks included), identity or count; `--json`.
+- `doctor` / `task_doctor`: check the project root, configuration, registry, view drift and log.
+- `--json` for `list` and `next` (and `json: true` on `task_list` and `task_next`).
+- Returning a task from review (`in_review` to `in_progress`) with `--reason` records the reason as a note.
+
+### Changed
+- MCP tools reject undeclared and missing required arguments with the allowed names. Before, an argument with a
+  wrong name (for example `spec_source` instead of `spec`) was silently dropped.
+- `update` that changes nothing now fails with a hint instead of reporting a `no-op` and writing a log entry.
+
 ## [0.2.0] - 2026-10-29
 
 ### Added

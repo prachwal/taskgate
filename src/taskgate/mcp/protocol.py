@@ -23,6 +23,20 @@ def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
+def _check_arguments(name: str, spec: registry.ToolSpec, arguments: Any) -> None:
+    """Refuse unknown or missing arguments instead of silently ignoring them."""
+    if not isinstance(arguments, dict):
+        raise ValueError(f"{name}: arguments must be an object")
+    schema = spec.get("inputSchema", {})
+    known = set(schema.get("properties", {}))
+    unknown = sorted(set(arguments) - known)
+    if unknown:
+        raise ValueError(f"{name}: unknown argument(s) {', '.join(unknown)} (allowed: {', '.join(sorted(known)) or 'none'})")
+    missing = [key for key in schema.get("required", []) if key not in arguments]
+    if missing:
+        raise ValueError(f"{name}: missing required argument(s) {', '.join(missing)}")
+
+
 def handle_request(
     request: dict[str, Any],
     *,
@@ -52,7 +66,9 @@ def handle_request(
         if spec is None:
             return _error(request_id, -32601, f"unknown tool {name!r}")
         try:
-            text = spec["handler"](params.get("arguments") or {})
+            arguments = params.get("arguments") or {}
+            _check_arguments(name, spec, arguments)
+            text = spec["handler"](arguments)
         except (Exception, SystemExit) as exc:  # tool errors ride in the envelope
             return _ok(request_id, {"content": [{"type": "text", "text": str(exc)}], "isError": True})
         return _ok(request_id, {"content": [{"type": "text", "text": text}], "isError": False})

@@ -32,6 +32,9 @@ def cmd_next(args: argparse.Namespace) -> int:
     if args.owner and head.get("owner") not in (None, args.owner):
         print(f"nothing to claim: {head['id']} is owned by {head['owner']!r}")
         return 2
+    if args.json:
+        print(json.dumps(head, indent=2, ensure_ascii=False))
+        return 0
     owner = head.get("owner") or "unowned"
     hint = _policy_hint(head, data, project.config)
     print(f"{head['id']}  [{owner}]  {head['title']}  // verify: {head.get('verification_cmd')}{hint}")
@@ -78,6 +81,9 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     project = store.open_project()
     rows = store.load(project).get("tasks", [])
+    if args.json:
+        print(json.dumps([t for t in rows if not args.status or t.get("status") == args.status], indent=2, ensure_ascii=False))
+        return 0
     for t in rows:
         if args.status and t.get("status") != args.status:
             continue
@@ -272,6 +278,8 @@ def cmd_update(args: argparse.Namespace) -> int:
                 detail["blocked_reason"] = None
             if args.status == "in_progress" and not task.get("started"):
                 task["started"] = store.now()
+            if current == "in_review" and args.status == "in_progress" and args.reason:
+                task.setdefault("notes", []).append({"at": store.now(), "by": by, "text": f"returned from review: {args.reason}"})
             if args.status in model.TERMINAL:
                 task["finished"] = store.now()
                 if args.status == "cancelled" and args.reason:
@@ -296,9 +304,16 @@ def cmd_update(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        if not detail:
+            print(
+                "error: nothing to update: pass --status, --verification-result or --review-result "
+                "(use 'edit' for title/spec, 'note' for remarks)",
+                file=sys.stderr,
+            )
+            return 1
         store.save(project, data)
-        store.append_log(project, "update", args.id, by, detail or {"no-op": True})
-    print(f"{args.id} updated ({', '.join(f'{k}={v!r}' for k, v in detail.items()) or 'no-op'})")
+        store.append_log(project, "update", args.id, by, detail)
+    print(f"{args.id} updated ({', '.join(f'{k}={v!r}' for k, v in detail.items())})")
     return 0
 
 

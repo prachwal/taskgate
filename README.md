@@ -118,8 +118,14 @@ architect/human planners) to show the engine is not tied to one convention.
 
 ## Commands
 
-`init`, `validate`, `render [--check]`, `next`, `list [--status]`, `show`, `claim`, `update`, `add [--parent] [--profile]`,
-`profile`, `sort`, `move`, `depends`, `mcp`, `config-snippet`. `taskgate <command> --help` lists the flags.
+`init`, `validate`, `render [--check]`, `next [--json]`, `list [--status] [--json]`, `show`, `claim`, `update`,
+`add [--parent] [--profile]`, `edit`, `note`, `log [--task] [--by] [--limit] [--json]`, `doctor`, `profile`, `sort`,
+`move`, `depends`, `mcp`, `config-snippet`. `taskgate <command> --help` lists the flags.
+
+`edit` changes the title, spec anchor or verification command of a draft/planned task (planners only); `note` appends a
+timestamped remark to a task in any status; `log` reads the mutation log; `doctor` checks the project setup and is the
+first command to run when a client reports "no taskgate project found". Returning a task from review with `--reason`
+records the reason as a note.
 
 Recording evidence, in separate calls:
 
@@ -132,10 +138,12 @@ taskgate update T-1 --status done --by reviewer \
 
 ## MCP tools
 
-`task_list`, `task_next`, `task_show`, `task_validate` (read-only, so clients can skip the approval prompt),
-`task_claim`, `task_update`, `task_add`, `task_profile`, `task_move`, `task_depends`, `task_sort`, `task_render` and
-`quality_check`.
-Tool failures come back as `isError` results rather than protocol errors, so an agent sees the reason.
+`task_list`, `task_next`, `task_show`, `task_log`, `task_doctor`, `task_validate` (read-only, so clients can skip the
+approval prompt), `task_claim`, `task_update`, `task_add`, `task_edit`, `task_note`, `task_profile`, `task_move`,
+`task_depends`, `task_sort`, `task_render` and `quality_check`. `task_list` and `task_next` take `json: true`.
+Tool failures come back as `isError` results rather than protocol errors, so an agent sees the reason. Arguments a
+tool does not declare, or required ones that are missing, are rejected with the list of allowed names instead of
+being ignored.
 
 The server speaks newline-delimited JSON-RPC 2.0 over stdio. Run it with `taskgate mcp` or `taskgate-mcp`.
 
